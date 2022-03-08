@@ -12,7 +12,8 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
             body = '\n'.join(results)
 
             self.send_response(200)
-            self.send_header("Content-type", "text/plain; charset=utf-8")
+            self.send_header(
+                "Content-type", "text/plain; charset=utf-8; version=0.0.4")
             self.end_headers()
             self.wfile.write(body.encode())
 

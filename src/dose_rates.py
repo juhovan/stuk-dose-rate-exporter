@@ -16,7 +16,7 @@ def get_data():
     """
     data = download_data()
 
-    logging.info("Generating GeoJSON files")
+    logging.info("Generating metrics")
     invalidDatasets = 0
     for dataset in data:
         try:
@@ -38,10 +38,8 @@ def download_data():
     """
     data = []
 
-    end_time = datetime.utcnow() - timedelta(seconds=2400)
-    start_time = end_time - timedelta(seconds=559)
     logging.info("Downloading dataset")
-    dataset = fmi_utils.wfs_request(start_time, end_time, "dose_rates")
+    dataset = fmi_utils.wfs_request("dose_rates")
     if dataset is not None:
         data.append(dataset)
     else:
@@ -52,17 +50,16 @@ def download_data():
 
 def parse_data(data):
     """
-    Parses the argument dose rate data into a GeoJSON string.
+    Parses the argument dose rate data into a list of metrics.
 
     :param data: raw dose rate data from the FMI open data API.
-    :return: GeoJSON string of dose rate data
+    :return: list of metrics
     """
     if data is None:
         raise InvalidDatasetError
 
     wfs_response = ElementTree.fromstring(data)
     gml_points = wfs_response.findall('.//{%s}Point' % fmi_utils.gml_namespace)
-    geojson_string = deepcopy(fmi_utils.geojson_template)
 
     # Read locations.
     locations = {}
@@ -107,6 +104,8 @@ def parse_data(data):
 
         line = line.split()
         coords = line[0] + " " + line[1]
+        lat = line[0]
+        lon = line[1]
         timestamp = datetime.utcfromtimestamp(int(line[2]))
 
         # Some datasets contain duplicate entries for sites where the timestamp
@@ -118,8 +117,8 @@ def parse_data(data):
         elif timestamp != dataset_timestamp:
             continue
 
-        result.append("dose_rate{{site=\"{site}\"}} {doserate}".format(
-            site=locations[coords]["site"], doserate=values[i]))
+        result.append("dose_rate{{site=\"{site}\",lat=\"{lat}\",lon=\"{lon}\"}} {doserate}".format(
+            site=locations[coords]["site"], lat=lat, lon=lon, doserate=values[i]))
 
     return result
 

@@ -13,7 +13,7 @@ fmi_request_datetime_format = "YYYY-MM-DDThh:mm:ss"
 request_templates = {
     "dose_rates": ("https://opendata.fmi.fi/wfs/eng?"
                     "request=GetFeature&storedquery_id=stuk::observations::"
-                    "external-radiation::multipointcoverage&starttime={}&endtime={}")
+                    "external-radiation::multipointcoverage")
 }
 
 geojson_template = {
@@ -24,23 +24,18 @@ geojson_template = {
     "features": []
 }
 
-def wfs_request(start_time, end_time, results_type):
+def wfs_request(results_type):
     """
     Performs a WFS request to the FMI open data API.
 
-    :param start_time: start of the timespan for which to get data
-    :param end_time: end of the timespan for which to get data
     :param results_type: type of data to get
     :return: dataset as a string
     """
-    timeFormat = "%Y-%m-%dT%H:%M:00Z"
-    t0 = start_time.strftime(timeFormat)
-    t1 = end_time.strftime(timeFormat)
-    url = request_templates[results_type].format(t0, t1)
+    url = request_templates[results_type]
     response = None
 
     try:
-        with urlopen(url, timeout=3) as connection:
+        with urlopen(url, timeout=10) as connection:
             response = connection.read()
     except (URLError, ConnectionError, socket.timeout):
         pass
