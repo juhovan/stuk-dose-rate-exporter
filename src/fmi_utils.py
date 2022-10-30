@@ -35,7 +35,7 @@ def wfs_request(results_type):
     response = None
 
     try:
-        with urlopen(url, timeout=50) as connection:
+        with urlopen(url, timeout=290) as connection:
             response = connection.read()
     except (URLError, ConnectionError, socket.timeout):
         pass
