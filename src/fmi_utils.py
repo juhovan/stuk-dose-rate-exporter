@@ -1,7 +1,7 @@
 from urllib.error import URLError
 from urllib.request import urlopen
 import socket
-import time
+import logging
 
 gml_namespace = "http://www.opengis.net/gml/3.2"
 gmlcov_namespace ="http://www.opengis.net/gmlcov/1.0"
@@ -27,7 +27,6 @@ geojson_template = {
 def wfs_request(results_type):
     """
     Performs a WFS request to the FMI open data API.
-
     :param results_type: type of data to get
     :return: dataset as a string
     """
@@ -37,7 +36,8 @@ def wfs_request(results_type):
     try:
         with urlopen(url, timeout=290) as connection:
             response = connection.read()
-    except (URLError, ConnectionError, socket.timeout):
-        pass
+    except (URLError, ConnectionError, socket.timeout) as e:
+        logging.warning(f"Error in wfs_request: {e}")
+        return None
 
     return response

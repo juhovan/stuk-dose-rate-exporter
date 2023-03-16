@@ -1,39 +1,58 @@
-from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime
 from xml.etree import ElementTree
-import json
-import logging
 import math
-import os
-import sys
-import time
+import logging
 
 import fmi_utils
+from prometheus_client import Gauge
 
-def get_data():
-    """
-    Downloads, parses, and writes dose rate data.
-    """
-    data = download_data()
+# Create a Prometheus Gauge metric
+dose_rate_gauge = Gauge('dose_rate', 'Dose rate', ['site', 'lat', 'lon'])
 
-    logging.info("Generating metrics")
-    invalidDatasets = 0
+
+class DownloadError(Exception):
+    def __init__(self, message=None):
+        super().__init__(message)
+
+
+class EmptyDatasetError(Exception):
+    def __init__(self, message=None):
+        super().__init__(message)
+
+
+class AllNaNValuesError(Exception):
+    def __init__(self, message=None):
+        super().__init__(message)
+
+
+def update_data():
+    """
+    Downloads, parses, and updates dose rate data.
+    """
+    try:
+        data = download_data()
+    except DownloadError:
+        logging.warning("DownloadError: Could not update data due to download failure")
+        return
+
+    logging.info("Updating metrics")
+    invalid_datasets = 0
     for dataset in data:
         try:
-            parsed_data = parse_data(dataset)
-            return parsed_data
-        except InvalidDatasetError:
-            invalidDatasets += 1
+            parse_data(dataset)
+        except (EmptyDatasetError, AllNaNValuesError) as e:
+            logging.warning(f"Error parsing dataset: {e}")
+            invalid_datasets += 1
 
-    if invalidDatasets > 0:
-        logging.info("{0} invalid datasets were skipped".format(invalidDatasets))
+    if invalid_datasets > 0:
+        logging.info(f"{invalid_datasets} invalid datasets were skipped")
+
 
 def download_data():
     """
     Performs a WFS request for dose rate data from the FMI open data API.
     If no timespan is provided when running the program, the function
     fetches the most recent measurements.
-
     :return: array of HTTPResponse objects
     """
     data = []
@@ -44,19 +63,19 @@ def download_data():
         data.append(dataset)
     else:
         logging.warning("Failed to download dataset")
-        sys.exit(1)
+        raise DownloadError("Failed to download dataset")
 
     return data
+
 
 def parse_data(data):
     """
     Parses the argument dose rate data into a list of metrics.
-
     :param data: raw dose rate data from the FMI open data API.
-    :return: list of metrics
+    :return: None
     """
     if data is None:
-        raise InvalidDatasetError
+        raise EmptyDatasetError("Dataset is empty")
 
     wfs_response = ElementTree.fromstring(data)
     gml_points = wfs_response.findall('.//{%s}Point' % fmi_utils.gml_namespace)
@@ -77,58 +96,28 @@ def parse_data(data):
         }
 
     # Read values.
-    values = []
-    try:
-        value_lines = wfs_response.findall('.//{%s}doubleOrNilReasonTupleList' \
-                                            % fmi_utils.gml_namespace)[0].text.split("\n")[1:-1]
-    except IndexError:
-        raise InvalidDatasetError("Dataset contains no features.")
-
-    for line in value_lines:
-        value = float(line.strip().split()[0])
-        values.append(value)
-
-    # check if all values are NaNs
-    if all ( math.isnan(value) for value in values ):
-        raise InvalidDatasetError("Dataset values are all NaN")
+    value_elements = wfs_response.findall('.//{%s}doubleOrNilReasonTupleList' \
+                                          % fmi_utils.gml_namespace)[0]
 
     # Construct features.
-    position_lines =  wfs_response.findall('.//{%s}positions' \
-                                            % fmi_utils.gmlcov_namespace)[0].text.split("\n")[1:-1]
+    position_elements = wfs_response.findall('.//{%s}positions' \
+                                             % fmi_utils.gmlcov_namespace)[0]
 
-    result = []
-    dataset_timestamp = None
-    for i, line in enumerate(position_lines):
-        if math.isnan(values[i]):
+    value_lines = value_elements.text.split("\n")[1:-1]
+    position_lines = position_elements.text.split("\n")[1:-1]
+
+    for value_line, position_line in zip(value_lines, position_lines):
+        value = float(value_line.strip().split()[0])
+        position_line = position_line.split()
+        coords = position_line[0] + " " + position_line[1]
+        lat = position_line[0]
+        lon = position_line[1]
+
+        if math.isnan(value):
             continue
 
-        line = line.split()
-        coords = line[0] + " " + line[1]
-        lat = line[0]
-        lon = line[1]
-        timestamp = datetime.utcfromtimestamp(int(line[2]))
-
-        # Some datasets contain duplicate entries for sites where the timestamp
-        # of one of the entries differs by e.g. a minute.
-        # Entries that don't match the dataset's timestamp are skipped.
-        # The dataset's timestamp is set to the timestamp of the first entry.
-        if dataset_timestamp is None:
-            dataset_timestamp = timestamp
-        elif timestamp != dataset_timestamp:
-            continue
-
-        result.append("dose_rate{{site=\"{site}\",lat=\"{lat}\",lon=\"{lon}\"}} {doserate}".format(
-            site=locations[coords]["site"], lat=lat, lon=lon, doserate=values[i]))
-
-    return result
-
-class InvalidDatasetError(Exception):
-    """
-    A custom exception type for when a dataset retrieved from
-    FMI's API is considered invalid (e.g. it contains no features).
-    """
-    pass
-
-
-if __name__ == "__main__":
-    get_data()
+        dose_rate_gauge.labels(
+            site=locations[coords]["site"],
+            lat=str(locations[coords]["latitude"]),
+            lon=str(locations[coords]["longitude"])
+        ).set(value)

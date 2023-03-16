@@ -1,0 +1,15 @@
+# FMI Dose Rate Prometheus Exporter
+
+This project provides a simple Prometheus exporter for dose rate data from the Finnish Meteorological Institute (FMI) Open Data API. The exporter downloads and parses the external radiation dose rate data and exposes it as Prometheus metrics.
+
+## Features
+
+- Downloads the most recent external radiation dose rate data from FMI Open Data API
+- Parses and processes the data to extract dose rate information
+- Exposes the dose rate data as Prometheus metrics
+- Automatically updates the data at regular intervals
+
+## Requirements
+
+- Python 3.6+
+- Prometheus client for Python (`prometheus_client`)
