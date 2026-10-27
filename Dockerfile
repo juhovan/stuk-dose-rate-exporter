@@ -1,4 +1,4 @@
-FROM python:3.15.1-alpine
+FROM python:3.15.2-alpine
 
 # Create a non-root user and set the working directory
 RUN adduser -D appuser
